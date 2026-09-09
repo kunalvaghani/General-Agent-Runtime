@@ -1,0 +1,34 @@
+import { test, expect } from "@playwright/test";
+test("real creation → plan → approval → Docker tests → verification → SSE → memory", async ({page,request},testInfo) => {
+  const errors:string[]=[];page.on("pageerror",e=>errors.push(e.message));
+  await page.goto("/tasks/new");
+  await page.getByLabel("Goal",{exact:true}).fill(`Create a Python module and unit tests ${Date.now()}`);
+  await expect(page.getByRole("button",{name:"Create task",exact:true})).toBeEnabled();
+  await page.getByRole("button",{name:"Create task",exact:true}).click();
+  await page.getByRole("link",{name:"View task"}).click();
+  await expect(page.getByTestId("task-status")).toHaveText("WAITING APPROVAL");
+  await expect(page.getByRole("heading",{name:"Permission requested"})).toBeVisible();
+  const id=page.url().split("/").pop()!;
+  const before=await (await request.get(`/api/v1/tasks/${id}/snapshot`)).json();
+  expect(before.task.metadata.execution.observations.every((o:{tool:string})=>o.tool!=="terminal.run")).toBe(true);
+  await page.getByRole("button",{name:"Approve once"}).click();
+  await expect(page.getByTestId("task-status")).toHaveText("COMPLETED");
+  await expect(page.getByText("PASSED",{exact:true})).toBeVisible();
+  await expect(page.getByText("Task event stream finished.")).toBeVisible();
+  await expect(page.locator("summary").filter({hasText:"task.completed"})).toBeVisible();
+  const after=await (await request.get(`/api/v1/tasks/${id}/snapshot`)).json();
+  expect(after.task.metadata.verification.passed).toBe(true);
+  expect(after.task.metadata.execution.observations.some((o:{tool:string;exit_code:number;output:string})=>o.tool==="terminal.run"&&o.exit_code===0&&o.output.includes("1 passed"))).toBe(true);
+  await page.reload();await expect(page.getByTestId("task-status")).toHaveText("COMPLETED");
+  await page.screenshot({path:testInfo.outputPath("completed-task.png"),fullPage:true});
+  await page.goto("/memory");await expect(page.getByRole("link",{name:`Source task: ${id}`}).first()).toBeVisible();
+  expect(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth)).toBe(true);
+  expect(errors).toEqual([]);
+});
+test("management screens use real backend discovery and persisted settings", async({page})=>{
+  await page.goto("/models");await expect(page.getByRole("heading",{name:"acceptance-model"})).toBeVisible();
+  await page.goto("/settings");await page.getByLabel("Default model",{exact:true}).fill("acceptance-model");
+  await page.getByLabel("Model timeout (seconds)").fill("60");await page.getByRole("button",{name:"Save settings"}).click();
+  await expect(page.getByText("Settings saved.")).toBeVisible();await page.reload();
+  await expect(page.getByLabel("Model timeout (seconds)")).toHaveValue("60");
+});
