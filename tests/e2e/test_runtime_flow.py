@@ -51,9 +51,25 @@ def test_full_runtime_with_real_files_and_test_evidence(tmp_path, request):
         },
     ]
     adapter = AsyncMock()
-    adapter.generate.side_effect = [
-        Generation(model="test", content=json.dumps(r)) for r in responses
-    ]
+
+    async def generate(model, messages, **kwargs):
+        if responses:
+            value = responses.pop(0)
+        else:
+            context = json.loads(messages[-1].content)
+            value = {
+                "checks": {
+                    key: {
+                        "passed": True,
+                        "reason": "Fixture evidence reviewed",
+                        "evidence_ids": [context["tests"][0]["call_id"]],
+                    }
+                    for key in context["criteria"]
+                }
+            }
+        return Generation(model="test", content=json.dumps(value))
+
+    adapter.generate.side_effect = generate
     sandbox = AsyncMock()
     sandbox.run.return_value = (0, "1 passed", False)
     if request.config.getoption("--docker"):

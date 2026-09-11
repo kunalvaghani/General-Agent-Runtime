@@ -7,6 +7,7 @@ from rich.console import Console
 
 from gar import __version__
 from gar.api.app import create_app
+from gar.cli.desktop import desktop_app
 from gar.cli.execution import execute
 from gar.cli.models import ask, models_app, use
 from gar.cli.planning import plan
@@ -17,6 +18,7 @@ from gar.config import Settings
 
 app = typer.Typer(help="GAR — General Agent Runtime.", no_args_is_help=True)
 app.add_typer(models_app, name="models")
+app.add_typer(desktop_app, name="desktop")
 app.command()(use)
 app.command()(ask)
 app.command()(plan)

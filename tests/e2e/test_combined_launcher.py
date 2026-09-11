@@ -1,5 +1,6 @@
 """Verify the combined batch launcher and its configured same-origin API proxy."""
 
+import json
 import os
 import re
 import socket
@@ -7,6 +8,7 @@ import subprocess
 import sys
 import time
 from pathlib import Path
+from uuid import uuid4
 
 import httpx
 import pytest
@@ -46,6 +48,7 @@ def test_combined_launcher_custom_ports_and_preserved_data(tmp_path, occupied):
         "GAR_CONFIG_DIR": str(tmp_path / "config"),
         "GAR_OPEN_BROWSER": "0",
         "GAR_RUN_DIR": str(tmp_path / "tracked launches"),
+        "GAR_TEST_DIST_DIR": ".next-test-" + uuid4().hex,
     }
     log_path = tmp_path / "launcher.log"
     with log_path.open("w+") as log:
@@ -113,3 +116,15 @@ def test_combined_launcher_custom_ports_and_preserved_data(tmp_path, occupied):
             process.wait(timeout=15)
             for owner in owners:
                 owner.close()
+            # Next adds its temporary type directories to the shared config.
+            # Remove only this test's entries, preserving any concurrent settings.
+            config_path = root / "web/tsconfig.json"
+            config = json.loads(config_path.read_text("utf-8"))
+            original = config.get("include", [])
+            config["include"] = [
+                item
+                for item in original
+                if not item.startswith(environment["GAR_TEST_DIST_DIR"] + "/")
+            ]
+            if config["include"] != original:
+                config_path.write_text(json.dumps(config, indent=2) + "\n", encoding="utf-8")

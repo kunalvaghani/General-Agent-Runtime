@@ -1,4 +1,5 @@
 @echo off
+rem Stop API/UI children and GAR's isolated desktop containers; preserve user files.
 setlocal
 pushd "%~dp0"
 if errorlevel 1 exit /b 1

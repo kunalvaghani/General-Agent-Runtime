@@ -9,10 +9,12 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 
 from gar import __version__
+from gar.api.routes.desktop import router as desktop_router
 from gar.api.routes.health import router
 from gar.api.routes.runtime import router as runtime_router
 from gar.api.service import RuntimeService
 from gar.config import Settings
+from gar.desktop import DesktopManager
 from gar.logging import configure_logging
 from gar.persistence.database import Database
 
@@ -30,10 +32,18 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             database.initialize()
             app.state.database = database
             app.state.runtime = RuntimeService(database, config)
+            app.state.desktop = DesktopManager(app.state.runtime.repo, config)
             yield
         finally:
             if hasattr(app.state, "runtime"):
                 await app.state.runtime.close()
+            if hasattr(app.state, "desktop"):
+                try:
+                    # No Docker calls if this API lifetime never created a desktop request.
+                    if app.state.desktop.root.exists():
+                        await app.state.desktop.close()
+                except (ValueError, OSError, TimeoutError):
+                    logger.error("Desktop cleanup incomplete; use stop-gar.bat with Docker running")
             database.close()
             logger.info("GAR API stopped")
 
@@ -41,6 +51,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     app.state.settings = config
     app.include_router(router, prefix="/api/v1")
     app.include_router(runtime_router, prefix="/api/v1")
+    app.include_router(desktop_router, prefix="/api/v1")
     origins = [
         str(config.web_origin).rstrip("/"),
         "http://localhost:3000",

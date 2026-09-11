@@ -4,6 +4,7 @@ import Link from "next/link";
 import { readDetail, type TaskDetail as Detail } from "../lib/task-detail";
 import { EventFeed } from "./event-feed";
 import { Approval } from "./approval";
+import { Desktop } from "./desktop";
 import { api } from "../lib/api";
 import { taskEventsUrl } from "../lib/events";
 export function TaskDetail({ id, load = readDetail, live=true }: { id: string; load?: (id:string) => Promise<Detail | null>; live?:boolean }) {
@@ -32,7 +33,7 @@ export function TaskDetail({ id, load = readDetail, live=true }: { id: string; l
     <div className="eyebrow">TASK / {task.id}</div><button className="secondary" onClick={refresh}>Refresh</button></div>
     <h1>{task.goal}</h1>{error&&<p className="error" role="alert">{error} · Showing the last received snapshot.</p>}{actionError&&<p className="error" role="alert">{actionError}</p>}
     <div className="row"><span data-testid="task-status" className={`badge ${task.status}`}>{task.status.replaceAll("_"," ")}</span>
-      <small>{task.model_id} · Budget {task.max_steps} steps</small></div>
+      <small>{task.model_id} · Budget {task.max_steps} decisions</small></div>
     <p className="lead">Current step: <strong>{task.current_step ?? "None"}</strong></p>
     {live&&<div className="row" style={{justifyContent:"flex-start",marginBottom:20}}>
       {!["COMPLETED","FAILED","CANCELLED"].includes(task.status)&&<button className="secondary" disabled={busy} onClick={()=>control("cancel")}>Cancel task</button>}
@@ -51,7 +52,8 @@ export function TaskDetail({ id, load = readDetail, live=true }: { id: string; l
         <span className={`badge ${verification.passed ? "COMPLETED" : "BLOCKED"}`}>{verification.passed ? "PASSED" : "NOT PASSED"}</span>
         <ul>{verification.evidence.map((e,i) => <li key={i}>{e}</li>)}</ul>{verification.issues.map((issue,i) => <p className="error" key={i}>{issue}</p>)}</>}</section>
       <section className="panel"><h2>Workspace</h2><pre>{task.workspace}</pre><small>Created {task.created_at}<br/>Updated {task.updated_at}</small></section></div></div>
-    <EventFeed key={id} taskId={id} initial={events} url={live?taskEventsUrl(id):undefined} onChange={refresh}
+    {live&&<Desktop key={`desktop-${id}`} taskId={id} verified={task.status==="COMPLETED"&&!!verification?.passed}/>}
+    <EventFeed key={`events-${id}`} taskId={id} initial={events} url={live?taskEventsUrl(id):undefined} onChange={refresh}
       task={task} checkedAt={checkedAt} error={error}/>
   </>;
 }

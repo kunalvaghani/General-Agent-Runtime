@@ -32,6 +32,8 @@ class EventType(StrEnum):
     VERIFICATION_PASSED = "verification.passed"
     VERIFICATION_FAILED = "verification.failed"
     MEMORY_SAVED = "memory.saved"
+    RECOVERY_STARTED = "recovery.started"
+    RECOVERY_STOPPED = "recovery.stopped"
 
 
 class Event(Snapshot):

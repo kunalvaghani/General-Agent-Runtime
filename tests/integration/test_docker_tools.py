@@ -25,3 +25,23 @@ def test_timeout_cleanup(monkeypatch, tmp_path):
     with pytest.raises(TimeoutError):
         asyncio.run(DockerSandbox().run(Workspace(tmp_path), ["python", "-c", "pass"], 1, True))
     assert capture.await_count == 2
+
+
+def test_headless_image_can_test_tk_widgets_in_virtual_display(tmp_path, request):
+    if not request.config.getoption("--docker"):
+        pytest.skip("Requires Docker")
+    code, output, _ = asyncio.run(
+        DockerSandbox().run(
+            Workspace(tmp_path),
+            [
+                "python",
+                "-c",
+                "import tkinter; root=tkinter.Tk(); root.withdraw(); "
+                "root.update(); root.destroy(); print(tkinter.TkVersion)",
+            ],
+            20,
+            False,
+        )
+    )
+    assert code == 0, output
+    assert "8.6" in output

@@ -9,6 +9,12 @@ invoked through the bounded executor, with approvals, verification, memory, rout
 API and CLI support. Final acceptance passed **172 backend tests**, **20 frontend
 tests**, and **14 desktop/mobile browser checks**, including live Docker.
 
+The subsequent reliability audit is tracked in `docs/CORE_AUDIT.md`. Its runtime
+and Docker regressions pass, but real-model calculator acceptance is still under
+investigation. Completion now requires both successful final tests and a separate
+review of the original goal against actual source and test evidence. Neither check
+guarantees correctness for arbitrary tasks or turns every local model into AGI.
+
 Frontend stage reports are in `docs/frontend-stage-reports.md`; backend reports are
 in `docs/stage-reports.md`. Follow the detailed master-prompt stage numbering.
 
@@ -101,6 +107,73 @@ launcher or `python`. It never deletes an incompatible environment automatically
 It does not start Ollama; model commands require your Ollama service to be running.
 
 The launcher will be updated and verified each stage; see `DEVELOPMENT.md`.
+
+### Approved isolated desktop
+
+Run `run-gar.bat --no-setup desktop-setup` once to build the Python/Tk desktop
+image (already built on the development machine). On a **completed, verified** task,
+use **Isolated desktop → Python entry file → Test frozen copy**. GAR copies the
+workspace and reruns `pytest -q` in the desktop image. Only a passing run offers
+**Approve and open isolated desktop**, with the file hashes, image and test output
+available for review. Click the image to interact; the controls send text and keys.
+
+Approvals are single-use, expire after 15 minutes and fail if the source or frozen
+files change. The tested image ID is pinned for launch. Each desktop runs as a
+non-root user with no network, a read-only container root and one read-only host
+mount containing only the frozen task files. The app works on a temporary copy in
+the container; edits are discarded on stop. There is no host-shell execution or
+automatic promotion of generated files back to the host. Passing tests is evidence
+of those tests, not a guarantee of program safety or correctness.
+
+This is a **Linux Python GUI**, not Windows-native execution. Python/Tk and pytest
+are included; other GUI frameworks/dependencies are not automatically installed.
+Windows Sandbox was unavailable on the installed Home edition, so Docker provides
+the isolated display. Use **Stop desktop** or `stop-gar.bat` to remove GAR desktop
+containers. API shutdown also cleans up its desktop containers; Docker must be
+reachable to verify removal. Browser refresh can reconnect using the session ID
+under **Attach an existing CLI desktop session**.
+
+```bat
+run-gar.bat --no-setup desktop prepare TASK_ID calculator.py
+run-gar.bat --no-setup desktop approve SESSION_ID
+run-gar.bat --no-setup desktop stop SESSION_ID
+```
+
+The prepare command runs tests and prints the approval details; approve is the
+explicit user permission to launch that exact snapshot. The desktop remains
+viewable through its task page. Audit records and frozen snapshots are kept under
+the configured data directory; stop preserves these records and the original files.
+
+The shared CLI/API runtime automatically feeds recoverable tool failures back to
+the model, with up to two retries per step and two replans per task. Decision counts are
+preserved across recovery; approvals remain specific to each requested action.
+Unsupported terminal commands fail validation before an approval prompt. Permission
+boundary failures and sandbox/cleanup failures do not trigger automatic workarounds.
+Recovery events appear in the CLI event output and the bottom activity panel.
+
+The ordinary task tools run in offline, headless, short-lived Docker containers. They can
+create GUI source files and test logic, but cannot open desktop windows or keep an
+interactive application running. Planners now receive these limits explicitly.
+Restart GAR to load backend updates. Resume can replan a previously blocked task
+whose retries are exhausted, provided its decision and replan budgets remain.
+
+Filesystem tools accept relative paths such as `calculator.py` and Docker's
+`/workspace/calculator.py` alias, both confined to the task workspace. Outside paths,
+traversal, secrets and links remain denied. A desktop session ID is produced by
+**Test frozen copy** or `desktop prepare`; the task ID cannot attach a desktop.
+
+Core reliability findings and repair checkpoints are in `docs/CORE_AUDIT.md`.
+Steps can now use multiple model/tool decisions for inspection and repair. New UI
+tasks default to 50 decisions; existing task budgets stay unchanged. Python writes
+require complete valid source, and file paths are mandatory. After updating an older
+installation, run `run-gar.bat --no-setup sandbox-setup` to add Tk libraries and the
+temporary virtual display used by GUI tests.
+`run-gar.bat --no-setup live-check` runs the actual local Qwen model and Docker in
+a separate acceptance workspace; it may approve existing workspace tools and
+Docker execution only inside that disposable fixture. Production approval rules
+stay unchanged. It uses the configured model timeout and records request timings.
+An unsuccessful check exits nonzero and keeps its evidence; exit 2 means an
+approval pause rather than a runtime failure.
 
 Use Python **3.11 or newer**. On Windows, use `py -3.11` in place of `python`
 when the default interpreter is older.

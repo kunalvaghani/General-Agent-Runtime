@@ -14,6 +14,7 @@ dist/
 data/
 node_modules/
 .next/
+.next-test-*/
 *.tsbuildinfo
 test-results/
 playwright-report/

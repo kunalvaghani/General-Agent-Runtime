@@ -1,4 +1,10 @@
 @echo off
+rem Filesystem tools accept Docker /workspace aliases within the task folder only.
+rem Core repairs: typed tools, bounded verification repair, nested writes, revision evidence.
+rem Run sandbox-setup to update Tk libraries and the test display; live-check uses the real model.
+rem Steps can inspect and repair before completion; syntax errors include source diagnostics.
+rem Completion requires passing tests and a separate goal review; model timeouts retry within budget.
+rem sandbox-setup includes a virtual display for automated GUI tests, without host windows.
 setlocal
 set "GAR_DOUBLE_CLICK="
 if "%~1"=="" set "GAR_DOUBLE_CLICK=1"
@@ -39,6 +45,7 @@ rem Stage 20: acceptance runs backend, lint, frontend and live Docker browser sc
 rem Default startup selects free API/UI ports and opens only its verified GAR instance.
 rem GAR uses UI port 4317 instead of legacy 3000 to avoid cached Open WebUI pages.
 rem Task pages include live bottom activity updates; no additional service is needed.
+rem CLI/API runtime now retries recoverable tool failures and replans within existing budgets.
 rem Use stop-gar.bat to stop tracked services and task containers.
 rem Usage: run-gar.bat --no-setup plan TASK_ID (Ollama must already be running).
 ".venv\Scripts\python.exe" -m gar db-init
@@ -48,6 +55,7 @@ if /I "%~1"=="check" goto checks
 if /I "%~1"=="plan-help" goto plan_help
 if /I "%~1"=="tools-help" goto tools_help
 if /I "%~1"=="sandbox-setup" goto sandbox_setup
+if /I "%~1"=="desktop-setup" goto desktop_setup
 if /I "%~1"=="sandbox-check" goto sandbox_check
 if /I "%~1"=="web-setup" goto web_setup
 if /I "%~1"=="web" goto web
@@ -56,6 +64,7 @@ if /I "%~1"=="web-e2e" goto web_e2e
 if /I "%~1"=="dev" goto dev
 if /I "%~1"=="serve" goto serve
 if /I "%~1"=="acceptance" goto acceptance
+if /I "%~1"=="live-check" goto live_check
 if "%~1"=="" goto dev
 ".venv\Scripts\python.exe" -m gar %1 %2 %3 %4 %5 %6 %7 %8 %9
 set "GAR_EXIT=%ERRORLEVEL%"
@@ -63,6 +72,12 @@ goto finish
 :serve
 echo Starting GAR. Press Ctrl+C to stop. API documentation is available at /docs.
 ".venv\Scripts\python.exe" -m gar.launcher serve
+set "GAR_EXIT=%ERRORLEVEL%"
+goto finish
+:live_check
+echo Running real local-model acceptance in a new isolated test workspace.
+echo Only scoped workspace tools and Docker execution in the disposable fixture are approved.
+".venv\Scripts\python.exe" tests/support/live_acceptance.py
 set "GAR_EXIT=%ERRORLEVEL%"
 goto finish
 :plan_help
@@ -76,6 +91,11 @@ goto finish
 :sandbox_setup
 echo Building GAR tool container. Docker must be running; this downloads build dependencies.
 docker build -t gar-tools:stage4 -f docker/tools.Dockerfile docker
+set "GAR_EXIT=%ERRORLEVEL%"
+goto finish
+:desktop_setup
+echo Building the isolated Python GUI desktop image. Docker must be running.
+docker build -t gar-desktop:1 -f docker/desktop.Dockerfile docker
 set "GAR_EXIT=%ERRORLEVEL%"
 goto finish
 :sandbox_check

@@ -21,8 +21,28 @@ class PathInput(ToolInput):
     path: str = Field(default=".", min_length=1, max_length=4096)
 
 
-class WriteInput(PathInput):
-    content: str = Field(max_length=1_000_000)
+class FileInput(PathInput):
+    path: str = Field(
+        min_length=1,
+        max_length=4096,
+        description="Required workspace-relative FILE path, e.g. calculator.py; never a directory.",
+    )
+
+
+class DirectoryInput(PathInput):
+    path: str = Field(
+        min_length=1,
+        max_length=4096,
+        description="Workspace-relative directory path to create, including parents.",
+    )
+
+
+class WriteInput(FileInput):
+    content: str = Field(
+        max_length=1_000_000,
+        description="The COMPLETE final file contents. Replaces the entire file; never supply an "
+        "insertion snippet. Preserve existing code when updating.",
+    )
 
 
 class CommandInput(ToolInput):

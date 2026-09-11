@@ -132,6 +132,18 @@ def stop_all():
     directory = run_directory()
     records = []
     failures = []
+    # Desktop sessions can also be started from the standalone CLI.
+    try:
+        import asyncio
+
+        from gar.config import Settings
+        from gar.desktop import DesktopManager
+
+        settings = Settings()
+        if (settings.data_dir / "desktops").exists():
+            asyncio.run(DesktopManager(None, settings).close())
+    except (OSError, ValueError, TimeoutError) as exc:
+        failures.append(f"Desktop cleanup incomplete: {exc}")
     for path in directory.glob("*.json"):
         try:
             record = json.loads(path.read_text("utf-8"))

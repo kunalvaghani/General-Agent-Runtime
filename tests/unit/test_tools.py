@@ -36,11 +36,90 @@ def test_write_read_list_and_approval(runtime):
     assert call(runtime, "filesystem.write", args, approved=True).status == "ok"
 
 
+def test_docker_workspace_alias_stays_in_task_folder(runtime):
+    args = {"path": "/workspace/calculator.py", "content": "print(2 + 2)"}
+    assert call(runtime, "filesystem.write", args).status == "ok"
+    assert (runtime.workspace.root / "calculator.py").read_text() == args["content"]
+    assert call(runtime, "filesystem.read", {"path": args["path"]}).output == args["content"]
+    assert call(runtime, "filesystem.list", {"path": "/workspace"}).output == "calculator.py"
+    assert call(runtime, "filesystem.write", args).error == "approval_required"
+
+
+def test_nested_source_creation_preserves_workspace_boundary(runtime):
+    args = {"path": "tests/unit/test_app.py", "content": "def test_add(): assert 2+2 == 4"}
+    assert call(runtime, "filesystem.write", args).status == "ok"
+    assert (runtime.workspace.root / args["path"]).read_text() == args["content"]
+    assert (
+        call(runtime, "filesystem.write", {**args, "path": "../outside/new.py"}).error
+        == "path_denied"
+    )
+
+
+def test_invalid_python_fragment_does_not_replace_existing_file(runtime):
+    target = runtime.workspace.root / "app.py"
+    target.write_text("def add(a,b): return a+b\n")
+    result = call(
+        runtime,
+        "filesystem.write",
+        {"path": "app.py", "content": "    def method(self):\n        pass\n"},
+        approved=True,
+    )
+    assert result.error == "invalid_arguments"
+    assert "COMPLETE" in result.output
+    assert target.read_text() == "def add(a,b): return a+b\n"
+
+
+def test_rejected_source_diagnostic_points_to_missing_quote(runtime):
+    source = "buttons = [\n    '1', '2', '-,\n]\n"
+    result = call(runtime, "filesystem.write", {"path": "app.py", "content": source})
+    assert result.error == "invalid_arguments"
+    assert "line 2" in result.output
+    assert "'1', '2', '-," in result.output
+    excerpt, pointer = result.output.split("Rejected source (not saved):\n")[1].splitlines()
+    assert excerpt[pointer.index("^")] == "'"
+    assert not (runtime.workspace.root / "app.py").exists()
+
+
+def test_rejected_source_diagnostic_is_bounded(runtime):
+    source = "value = " + " " * 10000 + "'unterminated"
+    result = call(runtime, "filesystem.write", {"path": "app.py", "content": source})
+    assert result.error == "invalid_arguments"
+    assert "'unterminated" in result.output
+    assert len(result.output) < 800
+    assert not (runtime.workspace.root / "app.py").exists()
+
+
+def test_file_target_validation_precedes_approval(runtime):
+    assert call(runtime, "filesystem.write", {"content": "x"}).error == "invalid_arguments"
+    assert (
+        call(runtime, "filesystem.write", {"path": ".", "content": "x"}).error
+        == "invalid_arguments"
+    )
+    assert call(runtime, "filesystem.read", {}).error == "invalid_arguments"
+
+
+def test_directory_creation_and_file_conflict_preserve_data(runtime):
+    assert call(runtime, "filesystem.mkdir", {"path": "project/tests"}).status == "ok"
+    assert (runtime.workspace.root / "project/tests").is_dir()
+    assert call(runtime, "filesystem.mkdir", {"path": "../escape"}).error == "path_denied"
+    (runtime.workspace.root / "file").write_text("keep")
+    result = call(runtime, "filesystem.write", {"path": "file/test.py", "content": "pass"})
+    assert result.error == "invalid_arguments"
+    assert (runtime.workspace.root / "file").read_text() == "keep"
+
+
 @pytest.mark.parametrize(
     "path",
     [
         "../secret",
         "/etc/passwd",
+        "/workspace/../secret",
+        "/workspace//etc/passwd",
+        "/workspace/C:/Windows/a",
+        "/workspace/.env",
+        "/workspace/.git/config",
+        "/workspace2/secret",
+        "/workspace/..\\secret",
         "C:/Windows/a",
         "C:relative",
         "a:secret",
@@ -83,6 +162,10 @@ def test_directory_link_rejected(runtime, tmp_path):
     else:
         link.symlink_to(outside, target_is_directory=True)
     assert call(runtime, "filesystem.read", {"path": "linked/secret"}).error == "path_denied"
+    assert (
+        call(runtime, "filesystem.read", {"path": "/workspace/linked/secret"}).error
+        == "path_denied"
+    )
 
 
 def test_secret_mount_rejected(runtime):
@@ -117,7 +200,9 @@ def test_process_errors(runtime):
     runtime.sandbox.run.return_value = (1, "test failed", False)
     assert call(runtime, "python.run", {"code": "pass"}, approved=True).error == "command_failed"
     runtime.sandbox.run.side_effect = TimeoutError
-    assert call(runtime, "python.run", {"code": "pass"}, approved=True).error == "timeout"
+    result = call(runtime, "python.run", {"code": "pass"}, approved=True)
+    assert result.error == "timeout"
+    assert "30 seconds" in result.output and "mainloop" in result.output
     runtime.sandbox.run.side_effect = asyncio.CancelledError
     with pytest.raises(asyncio.CancelledError):
         call(runtime, "python.run", {"code": "pass"}, approved=True)

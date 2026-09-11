@@ -44,6 +44,11 @@ class Workspace:
             raise ToolFailure("path_denied", "Workspace must be an existing directory.")
 
     def resolve(self, value: str) -> Path:
+        # Docker's mount is a virtual alias for this task only, never a host path.
+        if value == "/workspace":
+            value = "."
+        elif value.startswith("/workspace/"):
+            value = value[len("/workspace/") :]
         windows = PureWindowsPath(value)
         if windows.drive or windows.root or Path(value).is_absolute() or "\\" in value:
             raise ToolFailure("path_denied", "Use a workspace-relative path with forward slashes.")

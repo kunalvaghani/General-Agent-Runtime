@@ -104,6 +104,12 @@ class Plan(Snapshot):
     # Default preserves Stage 2 snapshots; the planner requires criteria for new plans.
     completion_criteria: tuple[str, ...] = ()
 
+    @property
+    def can_retry_failed_steps(self) -> bool:
+        """At most three execution attempts per step; task budgets also apply."""
+        failed = [step for step in self.steps if step.status == StepStatus.FAILED]
+        return bool(failed) and all(step.attempts < 3 for step in failed)
+
     @model_validator(mode="after")
     def valid_dependencies(self) -> Self:
         ids = {step.id for step in self.steps}

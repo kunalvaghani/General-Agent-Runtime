@@ -4,6 +4,7 @@ import asyncio
 import json
 
 from gar.cli.models import make_registry
+from gar.core.events import EventType
 from gar.core.orchestrator import Orchestrator
 from gar.core.runtime import task_tools
 from gar.core.state import StepStatus, TaskStatus
@@ -62,7 +63,17 @@ class RuntimeService:
                             task_id, task.current_step, StepStatus.FAILED, task.version
                         )
                     if task.status != TaskStatus.BLOCKED:
-                        self.repo.transition(task_id, TaskStatus.BLOCKED, task.version)
+                        task = self.repo.transition(task_id, TaskStatus.BLOCKED, task.version)
+                    self.repo.record_event(
+                        task_id,
+                        EventType.RECOVERY_STOPPED,
+                        {
+                            "message": "Runtime could not continue. Check that the model is "
+                            "available in Models, Docker is running, and the task has "
+                            "remaining recovery budget."
+                        },
+                        task.version,
+                    )
 
     async def cancel(self, task_id):
         task = self.repo.get(task_id)

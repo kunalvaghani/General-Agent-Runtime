@@ -1,7 +1,15 @@
-import { it, expect } from "vitest";
-import { render, screen } from "@testing-library/react";
+import { it, expect, vi } from "vitest";
+import { render, screen, fireEvent, waitFor } from "@testing-library/react";
 import { TaskDetail } from "../components/task-detail";
 import { examples } from "./fixtures/tasks";
+it("keeps one desktop panel across task refreshes", async () => {
+  const load=vi.fn(async()=>({task:structuredClone(examples[1]),plan:null,events:[]}));
+  render(<TaskDetail id={examples[1].id} load={load}/>);
+  await screen.findByRole("heading",{name:"Isolated desktop"});
+  fireEvent.click(screen.getByRole("button",{name:"Refresh"}));
+  await waitFor(()=>expect(load).toHaveBeenCalledTimes(2));
+  expect(screen.getAllByRole("heading",{name:"Isolated desktop"})).toHaveLength(1);
+});
 it("renders backend evidence separately from task status", async () => {
   render(<TaskDetail id="example-completed" live={false} load={async()=>({task:examples[1],plan:null,events:[]})}/>);
   await screen.findByText("Example: artifact contents matched");

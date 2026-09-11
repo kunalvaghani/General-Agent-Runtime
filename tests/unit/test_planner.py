@@ -58,6 +58,42 @@ def test_valid_plan_and_provider_contract():
     assert "tools" not in kwargs
 
 
+def test_replan_cannot_exceed_remaining_execution_budget():
+    task = make_task(5).model_copy(update={"metadata": {"execution": {"decisions": 4}}})
+    adapter = model(json.dumps(draft()))
+    with pytest.raises(PlanningError):
+        asyncio.run(Planner(adapter).create_plan(task))
+    assert (
+        adapter.generate.call_args.kwargs["response_schema"]["properties"]["steps"]["maxItems"] == 1
+    )
+
+
+def test_repair_dependencies_can_reference_recorded_prior_completion():
+    proposal = draft()
+    proposal["steps"] = [proposal["steps"][1]]
+    planner = Planner(model(json.dumps(proposal)))
+    with pytest.raises(PlanningError):
+        asyncio.run(planner.create_plan(make_task()))
+    result = asyncio.run(planner.create_plan(make_task(), completed_step_ids={"write"}))
+    assert result.steps[0].dependencies == ()
+    with pytest.raises(PlanningError):
+        asyncio.run(planner.create_plan(make_task(), completed_step_ids={"unrelated"}))
+    # Reusing an old ID in the new plan makes it a new dependency, not completed work.
+    result = asyncio.run(
+        Planner(model(json.dumps(draft()))).create_plan(make_task(), completed_step_ids={"write"})
+    )
+    assert result.steps[1].dependencies == ("write",)
+
+
+def test_edits_after_tests_get_a_final_validation_milestone():
+    proposal = draft()
+    proposal["steps"][-1]["tool_hint"] = "filesystem.write"
+    adapter = model(json.dumps(proposal))
+    result = asyncio.run(Planner(adapter).create_plan(make_task()))
+    assert result.steps[-1].tool_hint == "terminal.run"
+    assert set(result.steps[-1].dependencies) == {"write", "test"}
+
+
 @pytest.mark.parametrize(
     "mutation",
     [

@@ -24,7 +24,9 @@ def test_serve_uses_validated_config(monkeypatch):
     monkeypatch.setenv("GAR_PORT", "8123")
     result = runner.invoke(app, ["serve"])
     assert result.exit_code == 0
-    assert calls == [{"host": "127.0.0.1", "port": 8123, "log_level": "info"}]
+    assert calls == [
+        {"host": "127.0.0.1", "port": 8123, "log_level": "info", "timeout_graceful_shutdown": 5}
+    ]
 
 
 def test_invalid_config_does_not_leak_value(monkeypatch):

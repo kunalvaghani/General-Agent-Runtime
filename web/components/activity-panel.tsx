@@ -7,8 +7,10 @@ export function describeEvent(event: RuntimeEvent): string {
   const data = event.data;
   const text = (key: string) => typeof data[key] === "string" ? String(data[key]) : "";
   switch (event.event) {
+    case "recovery.started": return text("message") || "Trying a different permitted approach";
+    case "recovery.stopped": return text("message") || "Automatic recovery stopped";
     case "model.requested": return `Waiting for ${text("model") || "the model"} · ${text("role") || "generation"}`;
-    case "model.responded": return `Model response received · ${text("role") || "generation"}`;
+    case "model.responded": return text("message") || `Model response received · ${text("role") || "generation"}`;
     case "plan.created": return "Execution plan saved";
     case "plan.revised": return "Execution plan updated";
     case "step.started": return `Started step ${text("step_id")}`;

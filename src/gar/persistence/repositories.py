@@ -52,7 +52,7 @@ class TaskRepository:
         with self.database.engine.begin() as connection:
             task = self._get(connection, task_id)
             state = dict(task.metadata.get("execution", {}))
-            if task.status != TaskStatus.BLOCKED or state.get("retries", 0) >= 2:
+            if task.status != TaskStatus.BLOCKED:
                 raise ValueError("Task is not retryable or retry limit reached")
             plan = self._plan(connection, task_id)
             if plan is None:
@@ -60,6 +60,8 @@ class TaskRepository:
             failed = [s for s in plan.steps if s.status == StepStatus.FAILED]
             if not failed:
                 raise ValueError("No failed step to retry; use replan")
+            if not plan.can_retry_failed_steps or state.get("decisions", 0) >= task.max_steps:
+                raise ValueError("Step retry limit or task decision budget reached")
             new_plan = Plan.model_validate(
                 {
                     **plan.model_dump(),
@@ -338,12 +340,24 @@ class TaskRepository:
         self, task_id: str, kind: EventType, data: dict, expected_version: int
     ) -> Task:
         """Append runtime model telemetry without bypassing lifecycle methods."""
-        if kind not in (EventType.MODEL_REQUESTED, EventType.MODEL_RESPONDED):
+        if kind not in (
+            EventType.MODEL_REQUESTED,
+            EventType.MODEL_RESPONDED,
+            EventType.RECOVERY_STARTED,
+            EventType.RECOVERY_STOPPED,
+        ):
             raise ValueError("Lifecycle events must use their dedicated repository operation")
         with self.database.engine.begin() as connection:
             task = self._get(connection, task_id)
-            if task.status != TaskStatus.PLANNING:
-                raise Conflict("Task is no longer planning")
+            expected_status = (
+                TaskStatus.BLOCKED
+                if kind in (EventType.RECOVERY_STARTED, EventType.RECOVERY_STOPPED)
+                else (
+                    TaskStatus.VERIFYING if data.get("role") == "verifier" else TaskStatus.PLANNING
+                )
+            )
+            if task.status != expected_status:
+                raise Conflict("Task state changed before telemetry could be recorded")
             updated = self._save(connection, task, {}, expected_version)
             self._event(connection, task_id, kind, data)
             return updated
